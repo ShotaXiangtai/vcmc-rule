@@ -1,0 +1,21 @@
+# RuruRules 設定ファイル
+
+# ルールページのURL
+rules-url: "https://www.vcmc.jp/rules"
+
+# 本としてルールを表示するか (false にするとチャットにURLを表示するだけ)
+show-as-book: true
+
+# 本のタイトル・著者
+book-title: "vcmc.jp サーバールール"
+book-author: "vcmc.jp"
+
+# HTML取得タイムアウト (ミリ秒)
+fetch-timeout-ms: 10000
+
+# HTMLから取得するCSSセレクタ (main content エリアを指定)
+# 空にすると <body> 全体から取得
+content-selector: "main, article, .content, #content"
+
+# 操作をブロックした際にルールメッセージを再表示するか
+show-message-on-block: true

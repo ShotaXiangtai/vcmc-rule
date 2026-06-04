@@ -1,0 +1,17 @@
+name: RuruRules
+version: 1.0.0
+main: jp.vcmc.rururules.RuruRulesPlugin
+api-version: '26.1'
+folia-supported: true
+description: 初回参加時にルール確認を強制するプラグイン
+
+commands:
+  rules:
+    description: ルール確認コマンド
+    usage: /rules [agree]
+    aliases: [rule]
+
+permissions:
+  rururules.admin:
+    description: 管理者権限 (プレイヤーの同意状態のリセット)
+    default: op

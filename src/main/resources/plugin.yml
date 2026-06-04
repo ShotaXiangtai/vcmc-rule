@@ -1,7 +1,7 @@
 name: RuruRules
 version: 1.0.0
 main: jp.vcmc.rururules.RuruRulesPlugin
-api-version: '26.1'
+api-version: '26'
 folia-supported: true
 description: 初回参加時にルール確認を強制するプラグイン
 

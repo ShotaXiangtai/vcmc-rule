@@ -16,13 +16,26 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityPickupItemEvent
 import org.bukkit.event.inventory.InventoryClickEvent
-import org.bukkit.event.player.*
+import org.bukkit.event.inventory.InventoryDragEvent
+import org.bukkit.event.player.PlayerCommandPreprocessEvent
+import org.bukkit.event.player.PlayerDropItemEvent
+import org.bukkit.event.player.PlayerInteractAtEntityEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
+import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerJoinEvent
+import org.bukkit.event.player.PlayerMoveEvent
+import org.bukkit.event.player.PlayerQuitEvent
+import org.bukkit.event.player.PlayerSwapHandItemsEvent
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class RulesListener(
     private val plugin: RuruRulesPlugin,
     private val rulesManager: RulesManager,
-    private val bookFetcher: RulesBookFetcher
+    private val bookFetcher: RulesBookFetcher,
 ) : Listener {
+
+    private val lastReminder = ConcurrentHashMap<UUID, Long>()
 
     // プレイヤー参加
     @EventHandler(priority = EventPriority.MONITOR)
@@ -33,26 +46,21 @@ class RulesListener(
         rulesManager.addPending(player)
 
         // 1秒後に表示（チャンクロード完了待ち）
-        player.scheduler.runDelayed(plugin, { _ -> showRules(player) }, null, 20L)
+        player.scheduler.runDelayed(plugin, { _ ->
+            if (rulesManager.isPending(player)) showRules(player)
+        }, null, 20L)
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     fun onPlayerQuit(event: PlayerQuitEvent) {
         rulesManager.removePending(event.player)
+        lastReminder.remove(event.player.uniqueId)
     }
 
     // 移動制限 (視点変更は許可)
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPlayerMove(event: PlayerMoveEvent) {
-        val player = event.player
-        if (!rulesManager.isPending(player)) return
-
-        val to = event.to ?: run {
-            event.isCancelled = true
-            return
-        }
-        val from = event.from
-        if (from.blockX != to.blockX || from.blockY != to.blockY || from.blockZ != to.blockZ) {
+        if (rulesManager.isPending(event.player) && event.hasChangedBlock()) {
             event.isCancelled = true
         }
     }
@@ -63,14 +71,18 @@ class RulesListener(
         val player = event.player
         if (!rulesManager.isPending(player)) return
         event.isCancelled = true
-        if (rulesManager.isShowMessageOnBlock) showRules(player)
+        remind(player)
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPlayerInteractEntity(event: PlayerInteractEntityEvent) {
-        val player = event.player
-        if (!rulesManager.isPending(player)) return
-        event.isCancelled = true
+        if (rulesManager.isPending(event.player)) event.isCancelled = true
+    }
+
+    /** 防具立てなどの操作はこちらのイベントになり、上のリスナーには届かない。 */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onPlayerInteractAtEntity(event: PlayerInteractAtEntityEvent) {
+        if (rulesManager.isPending(event.player)) event.isCancelled = true
     }
 
     // ダメージ・攻撃制限（未同意プレイヤーの被ダメージおよび攻撃を防止）
@@ -104,15 +116,16 @@ class RulesListener(
         }
     }
 
-    // チャット制限
-    @EventHandler(priority = EventPriority.HIGHEST)
+    /**
+     * チャット制限。
+     * 近距離チャットのプラグインより先に止めないと、未同意のプレイヤーの発言が配られてしまうので LOWEST で動かす。
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
     fun onAsyncChat(event: AsyncChatEvent) {
         val player = event.player
         if (!rulesManager.isPending(player)) return
         event.isCancelled = true
-        if (rulesManager.isShowMessageOnBlock) {
-            player.scheduler.run(plugin, { _ -> showRules(player) }, null)
-        }
+        player.scheduler.run(plugin, { _ -> remind(player) }, null)
     }
 
     // コマンド制限 (/rules は許可)
@@ -122,9 +135,9 @@ class RulesListener(
         if (!rulesManager.isPending(player)) return
 
         val cmd = event.message.lowercase().trim()
-        if (!cmd.equals("/rules") && !cmd.startsWith("/rules ") && !cmd.equals("/rule") && !cmd.startsWith("/rule ")) {
+        if (cmd != "/rules" && !cmd.startsWith("/rules ") && cmd != "/rule" && !cmd.startsWith("/rule ")) {
             event.isCancelled = true
-            if (rulesManager.isShowMessageOnBlock) showRules(player)
+            remind(player)
         }
     }
 
@@ -159,6 +172,24 @@ class RulesListener(
         }
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onInventoryDrag(event: InventoryDragEvent) {
+        val who = event.whoClicked
+        if (who is Player && rulesManager.isPending(who)) {
+            event.isCancelled = true
+        }
+    }
+
+    /** 操作を止めたときの再表示。感圧板の上などでは毎 tick 発生するので、間隔を空ける。プレイヤーのリージョンで呼ぶこと。 */
+    private fun remind(player: Player) {
+        if (!rulesManager.isShowMessageOnBlock) return
+        val now = System.currentTimeMillis()
+        val previous = lastReminder[player.uniqueId]
+        if (previous != null && now - previous < REMIND_INTERVAL_MILLIS) return
+        lastReminder[player.uniqueId] = now
+        showRules(player)
+    }
+
     /**
      * ルールを表示
      */
@@ -167,11 +198,13 @@ class RulesListener(
         if (bookMode && bookFetcher.hasCachedBook()) {
             bookFetcher.openBookForPlayer(player)
         } else {
-            sendRulesMessage(player, plugin.config.getString("rules-url", "https://www.vcmc.jp/rules") ?: "https://www.vcmc.jp/rules")
+            sendRulesMessage(player, rulesManager.rulesUrl)
         }
     }
 
     companion object {
+        private const val REMIND_INTERVAL_MILLIS = 3000L
+
         fun sendRulesMessage(player: Player, url: String) {
             val separator = Component.text("=".repeat(26)).color(NamedTextColor.GOLD)
             val title = Component.text("  【!! ルール確認が必要です !!】  ", NamedTextColor.YELLOW, TextDecoration.BOLD)

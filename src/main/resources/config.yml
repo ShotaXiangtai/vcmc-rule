@@ -13,9 +13,16 @@ book-author: "vcmc.jp"
 # HTML取得タイムアウト (ミリ秒)
 fetch-timeout-ms: 10000
 
+# ルールページを取得し直す間隔 (分)。0 にすると起動時と /rules reload のときだけ取得します
+# 取得に失敗したときは、この間隔に関係なく 5 分後にやり直します
+refresh-interval-minutes: 60
+
 # HTMLから取得するCSSセレクタ (main content エリアを指定)
 # 空にすると <body> 全体から取得
 content-selector: "main, article, .content, #content"
+
+# 本に載せない要素のCSSセレクタ
+exclude-selector: "nav, footer, script, style, noscript, form, button, .nav, .header, .footer, .sidebar, .site-header, .eyebrow, body > header"
 
 # 操作をブロックした際にルールメッセージを再表示するか
 show-message-on-block: true

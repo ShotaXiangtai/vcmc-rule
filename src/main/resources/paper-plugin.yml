@@ -1,17 +1,11 @@
 name: RuruRules
-version: 1.0.0
+version: '${project.version}'
 main: jp.vcmc.rururules.RuruRulesPlugin
-api-version: '26.2'
+api-version: '26.3'
 folia-supported: true
-description: 'Server rules enforcement plugin for Paper/Folia'
-
-commands:
-  rules:
-    description: 'Server rules command'
-    usage: /rules [agree|reload|reset]
-    aliases: [rule]
+description: 'Server rules enforcement plugin for Folia'
 
 permissions:
   rururules.admin:
-    description: 'Admin permission for RuruRules'
+    description: '/rules reload と /rules reset を実行する'
     default: op

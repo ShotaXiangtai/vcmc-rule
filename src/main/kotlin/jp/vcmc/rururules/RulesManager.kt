@@ -2,8 +2,10 @@ package jp.vcmc.rururules
 
 import org.bukkit.entity.Player
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -15,28 +17,14 @@ class RulesManager(private val plugin: RuruRulesPlugin) {
 
     @Synchronized
     fun loadAgreedPlayers() {
-        if (!Files.exists(dataFile)) {
-            try {
-                dataFile.parent?.let { Files.createDirectories(it) }
-                Files.createFile(dataFile)
-            } catch (e: IOException) {
-                plugin.logger.severe("データファイル作成失敗: ${e.message}")
-            }
-            return
-        }
+        if (!Files.exists(dataFile)) return
 
         try {
-            Files.newBufferedReader(dataFile).use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    val trimmed = line?.trim() ?: continue
-                    if (trimmed.isNotEmpty()) {
-                        try {
-                            agreedPlayers.add(UUID.fromString(trimmed))
-                        } catch (e: IllegalArgumentException) {
-                            plugin.logger.warning("無効なUUIDをスキップ: $trimmed")
-                        }
-                    }
+            Files.readAllLines(dataFile).map { it.trim() }.filter { it.isNotEmpty() }.forEach { line ->
+                try {
+                    agreedPlayers.add(UUID.fromString(line))
+                } catch (_: IllegalArgumentException) {
+                    plugin.logger.warning("無効なUUIDをスキップ: $line")
                 }
             }
         } catch (e: IOException) {
@@ -46,15 +34,17 @@ class RulesManager(private val plugin: RuruRulesPlugin) {
         plugin.logger.info("${agreedPlayers.size} 名の同意プレイヤーデータを読み込みました。")
     }
 
+    /** 途中で落ちても全員の同意が消えないよう、一時ファイルに書いてから置き換える。 */
     @Synchronized
     fun saveAgreedPlayers() {
         try {
             dataFile.parent?.let { Files.createDirectories(it) }
-            Files.newBufferedWriter(dataFile).use { writer ->
-                for (uuid in agreedPlayers) {
-                    writer.write(uuid.toString())
-                    writer.newLine()
-                }
+            val temp = dataFile.resolveSibling("${dataFile.fileName}.tmp")
+            Files.write(temp, agreedPlayers.map { it.toString() })
+            try {
+                Files.move(temp, dataFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temp, dataFile, StandardCopyOption.REPLACE_EXISTING)
             }
         } catch (e: IOException) {
             plugin.logger.severe("同意プレイヤー保存失敗: ${e.message}")

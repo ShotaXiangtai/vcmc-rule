@@ -2,9 +2,6 @@ package jp.vcmc.rururules
 
 import io.papermc.paper.command.brigadier.BasicCommand
 import io.papermc.paper.command.brigadier.CommandSourceStack
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
@@ -16,13 +13,15 @@ class RulesCommand(
     private val rulesListener: RulesListener,
 ) : BasicCommand {
 
+    private val messages get() = plugin.messages
+
     override fun execute(stack: CommandSourceStack, args: Array<out String>) {
         val sender = stack.sender
         if (args.isEmpty()) {
             if (sender is Player) {
                 rulesListener.showRules(sender)
             } else {
-                sender.sendMessage(Component.text(USAGE, NamedTextColor.YELLOW))
+                messages.send(sender, "usage")
             }
             return
         }
@@ -31,50 +30,49 @@ class RulesCommand(
             "agree" -> handleAgree(sender)
             "reload" -> handleReload(sender)
             "reset" -> handleReset(sender, args)
-            else -> sender.sendMessage(Component.text(USAGE, NamedTextColor.YELLOW))
+            else -> messages.send(sender, "usage")
         }
     }
 
     private fun handleAgree(sender: CommandSender) {
         if (sender !is Player) {
-            sender.sendMessage(Component.text("このコマンドはプレイヤーのみ使用できます。", NamedTextColor.RED))
+            messages.send(sender, "player-only")
             return
         }
         if (rulesManager.hasAgreed(sender)) {
-            sender.sendMessage(Component.text("すでにルールに同意済みです。", NamedTextColor.GREEN))
+            messages.send(sender, "already-agreed")
             return
         }
         rulesManager.setAgreed(sender)
-        sender.sendMessage(Component.empty())
-        sender.sendMessage(Component.text("ルールへの同意を確認しました！", NamedTextColor.GREEN, TextDecoration.BOLD))
-        sender.sendMessage(Component.text("vcmc.jp へようこそ！楽しい時間をお過ごしください！", NamedTextColor.YELLOW))
-        sender.sendMessage(Component.empty())
+        messages.send(sender, "agreed-title")
+        messages.send(sender, "agreed-welcome")
         plugin.logger.info("${sender.name} (${sender.uniqueId}) がルールに同意しました。")
     }
 
     private fun handleReload(sender: CommandSender) {
         if (!sender.hasPermission(PERM_ADMIN)) {
-            sender.sendMessage(Component.text("このコマンドを実行する権限がありません。", NamedTextColor.RED))
+            messages.send(sender, "no-permission")
             return
         }
         plugin.reloadConfig()
+        messages.reload()
         bookFetcher.reload()
-        sender.sendMessage(Component.text("設定を再読み込みしました。ルールページはバックグラウンドで取得します。", NamedTextColor.GREEN))
+        messages.send(sender, "reloaded")
     }
 
     private fun handleReset(sender: CommandSender, args: Array<out String>) {
         if (!sender.hasPermission(PERM_ADMIN)) {
-            sender.sendMessage(Component.text("このコマンドを実行する権限がありません。", NamedTextColor.RED))
+            messages.send(sender, "no-permission")
             return
         }
         if (args.size < 2) {
-            sender.sendMessage(Component.text("使用方法: /rules reset <プレイヤー名>", NamedTextColor.YELLOW))
+            messages.send(sender, "usage-reset")
             return
         }
         val targetName = args[1]
         val target = Bukkit.getPlayerExact(targetName) ?: Bukkit.getOfflinePlayerIfCached(targetName)
         if (target == null || (!target.hasPlayedBefore() && !target.isOnline)) {
-            sender.sendMessage(Component.text("プレイヤーが見つかりません: $targetName", NamedTextColor.RED))
+            messages.send(sender, "player-not-found", "player" to targetName)
             return
         }
         rulesManager.resetAgreement(target.uniqueId)
@@ -83,7 +81,7 @@ class RulesCommand(
             rulesManager.addPending(online)
             online.scheduler.run(plugin, { _ -> rulesListener.showRules(online) }, null)
         }
-        sender.sendMessage(Component.text("$targetName の同意状態をリセットしました。", NamedTextColor.GREEN))
+        messages.send(sender, "reset-done", "player" to targetName)
     }
 
     override fun suggest(stack: CommandSourceStack, args: Array<out String>): Collection<String> {
@@ -102,6 +100,5 @@ class RulesCommand(
 
     private companion object {
         const val PERM_ADMIN = "rururules.admin"
-        const val USAGE = "使用方法: /rules agree | /rules reload | /rules reset <プレイヤー名>"
     }
 }

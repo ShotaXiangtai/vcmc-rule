@@ -1,6 +1,7 @@
 package jp.vcmc.rururules
 
 import io.papermc.paper.event.player.AsyncChatEvent
+import jp.vcmc.rururules.i18n.Language
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.event.HoverEvent
@@ -213,53 +214,54 @@ class RulesListener(
      */
     fun showRules(player: Player) {
         lastReminder[player.uniqueId] = System.currentTimeMillis()
-        if (isBookMode()) {
+        if (isBookMode(player)) {
             bookFetcher.openBookForPlayer(player) { bookWatcher.onBookOpened(player) }
         } else {
-            sendRulesMessage(player, rulesManager.rulesUrl)
+            sendRulesMessage(player)
         }
     }
 
     /** 同意せずに閉じられた本を開き直す。本を使っていないときは、チャットが埋まらないよう何もしない。 */
     private fun reopenBook(player: Player) {
-        if (!rulesManager.isShowMessageOnBlock || !isBookMode()) return
+        if (!rulesManager.isShowMessageOnBlock || !isBookMode(player)) return
         lastReminder[player.uniqueId] = System.currentTimeMillis()
         bookFetcher.openBookForPlayer(player, reopened = true) { bookWatcher.onBookOpened(player) }
     }
 
-    private fun isBookMode(): Boolean = plugin.config.getBoolean("show-as-book", true) && bookFetcher.hasCachedBook()
+    private fun isBookMode(player: Player): Boolean =
+        plugin.config.getBoolean("show-as-book", true) && bookFetcher.hasBook(Language.of(player))
 
-    companion object {
-        private const val REMIND_INTERVAL_MILLIS = 3000L
+    /** 本を表示できないときに、チャットへ URL と同意ボタンを出す。 */
+    private fun sendRulesMessage(player: Player) {
+        val language = Language.of(player)
+        val messages = plugin.messages
+        val url = rulesManager.linkUrl(language)
+        val separator = Component.text("=".repeat(26)).color(NamedTextColor.GOLD)
+        val link = Component.text(" >> $url << ")
+            .color(NamedTextColor.AQUA)
+            .decorate(TextDecoration.UNDERLINED)
+            .clickEvent(ClickEvent.openUrl(url))
+            .hoverEvent(HoverEvent.showText(messages.text(language, "prompt-link-hover")))
+        val agreeBtn = messages.text(language, "prompt-agree")
+            .clickEvent(ClickEvent.runCommand("/rules agree"))
+            .hoverEvent(HoverEvent.showText(messages.text(language, "prompt-agree-hover")))
 
-        fun sendRulesMessage(player: Player, url: String) {
-            val separator = Component.text("=".repeat(26)).color(NamedTextColor.GOLD)
-            val title = Component.text("  【!! ルール確認が必要です !!】  ", NamedTextColor.YELLOW, TextDecoration.BOLD)
-            val desc = Component.text("サーバーを利用するには、サーバールールを確認し同意する必要があります。\n下記リンクからルールをご確認ください。", NamedTextColor.WHITE)
-            val link = Component.text(" >> $url << ")
-                .color(NamedTextColor.AQUA)
-                .decorate(TextDecoration.UNDERLINED)
-                .clickEvent(ClickEvent.openUrl(url))
-                .hoverEvent(HoverEvent.showText(Component.text("クリックしてブラウザで開く", NamedTextColor.GREEN)))
-            val agreeBtn = Component.text("[ ✔ ルールに同意する ]")
-                .color(NamedTextColor.GREEN)
-                .decorate(TextDecoration.BOLD)
-                .clickEvent(ClickEvent.runCommand("/rules agree"))
-                .hoverEvent(HoverEvent.showText(Component.text("クリックして同意", NamedTextColor.YELLOW)))
+        player.sendMessage(Component.empty())
+        player.sendMessage(separator)
+        player.sendMessage(messages.text(language, "prompt-title"))
+        player.sendMessage(separator)
+        player.sendMessage(Component.empty())
+        player.sendMessage(messages.text(language, "prompt-description"))
+        player.sendMessage(Component.empty())
+        player.sendMessage(link)
+        player.sendMessage(Component.empty())
+        player.sendMessage(agreeBtn)
+        player.sendMessage(Component.empty())
+        player.sendMessage(separator)
+        player.sendMessage(Component.empty())
+    }
 
-            player.sendMessage(Component.empty())
-            player.sendMessage(separator)
-            player.sendMessage(title)
-            player.sendMessage(separator)
-            player.sendMessage(Component.empty())
-            player.sendMessage(desc)
-            player.sendMessage(Component.empty())
-            player.sendMessage(link)
-            player.sendMessage(Component.empty())
-            player.sendMessage(agreeBtn)
-            player.sendMessage(Component.empty())
-            player.sendMessage(separator)
-            player.sendMessage(Component.empty())
-        }
+    private companion object {
+        const val REMIND_INTERVAL_MILLIS = 3000L
     }
 }

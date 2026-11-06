@@ -1,7 +1,6 @@
 package jp.vcmc.rururules
 
-import org.bukkit.command.Command
-import org.bukkit.command.CommandSender
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.plugin.java.JavaPlugin
 
 class RuruRulesPlugin : JavaPlugin() {
@@ -26,18 +25,10 @@ class RuruRulesPlugin : JavaPlugin() {
         val rulesListener = RulesListener(this, rulesManager, bookFetcher)
         server.pluginManager.registerEvents(rulesListener, this)
 
-        val cmd = RulesCommand(this, rulesManager, bookFetcher, rulesListener)
-        val bcmd = object : Command("rules") {
-            override fun execute(s: CommandSender, l: String, a: Array<out String>): Boolean {
-                return cmd.onCommand(s, this, l, a)
-            }
-
-            override fun tabComplete(s: CommandSender, l: String, a: Array<out String>): List<String> {
-                return cmd.onTabComplete(s, this, l, a)
-            }
+        val command = RulesCommand(this, rulesManager, bookFetcher, rulesListener)
+        lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
+            event.registrar().register("rules", "サーバールールを表示して同意します", listOf("rule"), command)
         }
-        bcmd.aliases = listOf("rule")
-        server.commandMap.register(name, bcmd)
 
         logger.info("RuruRules 有効化完了。")
     }

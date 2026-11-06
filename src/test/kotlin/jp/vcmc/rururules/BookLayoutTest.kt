@@ -20,6 +20,37 @@ class BookLayoutTest {
     }
 
     @Test
+    fun `英語は単語の途中で折り返さないので行数が増える`() {
+        // 10 文字の単語は 1 行に 1 つしか入らない。文字の幅だけで数えると 5 行になる。
+        assertEquals(8, BookLayout.lineCount(List(8) { "a".repeat(10) }.joinToString(" ")))
+    }
+
+    @Test
+    fun `空白のない長い単語は途中で折り返す`() {
+        assertEquals(2, BookLayout.lineCount("a".repeat(25)))
+    }
+
+    @Test
+    fun `英語の長文でもページの行数を超えない`() {
+        val sentence = "Using unfair modifications or scripts, such as combat assistants and automation macros, is prohibited. "
+        val pages = BookLayout.paginate(listOf(RuleBlock(sentence.repeat(30))))
+        assertTrue(pages.size > 1)
+        pages.forEach { page ->
+            assertTrue(linesOf(page) <= BookLayout.MAX_LINES, "行数が多すぎます: ${linesOf(page)}")
+        }
+        assertEquals(sentence.repeat(30).trim().split(' '), pages.flatMap { it.split(' ', '\n') }.filter { it.isNotEmpty() })
+    }
+
+    @Test
+    fun `中国語の長文でもページの行数を超えない`() {
+        val pages = BookLayout.paginate(listOf(RuleBlock("使用 Simple Voice Chat 进入主要世界。".repeat(40))))
+        assertTrue(pages.size > 1)
+        pages.forEach { page ->
+            assertTrue(linesOf(page) <= BookLayout.MAX_LINES, "行数が多すぎます: ${linesOf(page)}")
+        }
+    }
+
+    @Test
     fun `日本語の長文でもページの行数を超えない`() {
         val pages = BookLayout.paginate(listOf(RuleBlock("禁止事項です。".repeat(200))))
         assertTrue(pages.size > 1)

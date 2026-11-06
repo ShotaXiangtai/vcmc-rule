@@ -1,12 +1,21 @@
 # RuruRules 設定ファイル
 
-# ルールページのURL
+# ルールページのURL（日本語）
 rules-url: "https://www.vcmc.jp/rules"
+
+# 言語ごとのルールページのURL。設定すると、その言語のプレイヤーにはそのページの内容を本で表示します。
+# 空のときは上の日本語のページを表示し、本の最初のページで翻訳が無いことを案内します。
+# 本は HTML をそのまま読みます。JavaScript で文章を切り替えるページは読めないので、言語ごとに別の HTML にしてください。
+rules-urls:
+  en: ""
+  zh_cn: ""
+  zh_tw: ""
+  zh_hk: ""
 
 # 本としてルールを表示するか (false にするとチャットにURLを表示するだけ)
 show-as-book: true
 
-# 本のタイトル・著者
+# 本のタイトル・著者（日本語。ほかの言語は lang フォルダのファイルで変更できます）
 book-title: "vcmc.jp サーバールール"
 book-author: "vcmc.jp"
 
@@ -26,3 +35,28 @@ exclude-selector: "nav, footer, script, style, noscript, form, button, .nav, .he
 
 # 操作をブロックしたときや、同意せずに本を閉じたときにルールを再表示するか
 show-message-on-block: true
+
+# 日本語の文面（MiniMessage 形式）
+# ほかの言語の文面は lang フォルダにあります。en.yml: English、zh_cn.yml: 简体中文、zh_tw.yml: 繁體中文（台灣）、zh_hk.yml: 繁體中文（香港）
+# プレイヤーのクライアントの言語設定に合わせて自動で切り替わります。
+messages:
+  prompt-title: "<yellow><bold>  【!! ルール確認が必要です !!】  "
+  prompt-description: "<white>サーバーを利用するには、サーバールールを確認し同意する必要があります。<newline>下記リンクからルールをご確認ください。"
+  prompt-link-hover: "<green>クリックしてブラウザで開く"
+  prompt-agree: "<green><bold>[ ✔ ルールに同意する ]"
+  prompt-agree-hover: "<yellow>クリックして同意"
+  book-opened: "<yellow>本を開きました。最後のページで <green><bold>[同意する]</bold></green> をクリックしてください。"
+  book-reopened: "<yellow>同意するまで、本を閉じても再度開きます。最後のページで <green><bold>[同意する]</bold></green> をクリックしてください。"
+  agree-page-text: "<gray>-------------------<newline><dark_gray>上記ルールを確認の上、<newline>下のボタンを押して同意してください。<newline><newline>"
+  agree-page-button: "<dark_green><bold>[ ✔ 同意する ]"
+  agree-page-hover: "<green>クリックして同意"
+  agreed-title: "<green><bold>ルールへの同意を確認しました！"
+  agreed-welcome: "<yellow>vcmc.jp へようこそ！楽しい時間をお過ごしください！"
+  already-agreed: "<green>すでにルールに同意済みです。"
+  usage: '<yellow>使用方法: /rules agree | /rules reload | /rules reset \<プレイヤー名>'
+  usage-reset: '<yellow>使用方法: /rules reset \<プレイヤー名>'
+  player-only: "<red>このコマンドはプレイヤーのみ使用できます。"
+  no-permission: "<red>このコマンドを実行する権限がありません。"
+  reloaded: "<green>設定を再読み込みしました。ルールページはバックグラウンドで取得します。"
+  player-not-found: "<red>プレイヤーが見つかりません: <player>"
+  reset-done: "<green><player> の同意状態をリセットしました。"

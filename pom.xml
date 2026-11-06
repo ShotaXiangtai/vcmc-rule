@@ -6,7 +6,7 @@
 
     <groupId>jp.vcmc</groupId>
     <artifactId>ruru-rules</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
     <packaging>jar</packaging>
 
     <name>ruru-rules</name>

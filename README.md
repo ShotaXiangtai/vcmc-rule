@@ -38,7 +38,7 @@
 
 - `/rules`（別名 `/rule`）: ルールを再表示します。
 - `/rules agree`: ルールに同意します（本やチャットのボタンから実行されます）。
-- `/rules reload`: [管理者] 設定を再読み込みし、ルールページを取得し直します。
+- `/rules reload`: [管理者] 設定と `lang` フォルダを再読み込みし、ルールページを取得し直します。
 - `/rules reset <プレイヤー名>`: [管理者] 同意状態をリセットし、再度同意を求めます。
 
 ## パーミッション
@@ -50,8 +50,15 @@
 `config.yml` で次の設定ができます。
 
 ```yaml
-# ルールページのURL
+# ルールページのURL（日本語）
 rules-url: "https://www.vcmc.jp/rules"
+
+# 言語ごとのルールページのURL。空のときは日本語のページを表示します
+rules-urls:
+  en: ""
+  zh_cn: ""
+  zh_tw: ""
+  zh_hk: ""
 
 # 本としてルールを表示するか (false にするとチャットにURLを表示するだけ)
 show-as-book: true
@@ -77,7 +84,40 @@ exclude-selector: "nav, footer, script, style, noscript, form, button, .nav, .he
 show-message-on-block: true
 ```
 
-`refresh-interval-minutes` と `exclude-selector` は、以前の `config.yml` に無くても既定値で動きます。
+`rules-urls`、`refresh-interval-minutes`、`exclude-selector`、`messages` は、以前の `config.yml` に無くても既定値で動きます。
+
+## 多言語対応
+
+プレイヤーのクライアントの言語設定に合わせて、メッセージを自動で切り替えます。ゲーム中に言語を変更すると、次のメッセージから反映されます。
+
+| クライアントの言語 | 表示する言語 | 文面の場所 |
+|---|---|---|
+| 日本語 | 日本語 | `config.yml` の `messages` |
+| English（各地域） | English | `lang/en.yml` |
+| 简体中文 | 简体中文 | `lang/zh_cn.yml` |
+| 繁體中文（台灣）、文言 | 繁體中文（台灣） | `lang/zh_tw.yml` |
+| 繁體中文（香港） | 繁體中文（香港） | `lang/zh_hk.yml` |
+| 上記以外 | English | `lang/en.yml` |
+
+繁體中文（香港）の文面は広東語で書いています。コンソールへのメッセージとログは日本語のままです。
+
+`lang` フォルダのファイルは初回起動時に作られます。編集して `/rules reload` を実行すると反映されます。ファイルに無いキーは jar 内の既定の文面を使います。
+
+### ルールページの翻訳
+
+本の本文はルールページの HTML から作ります。`config.yml` の `rules-urls` に言語ごとの URL を設定すると、その言語のプレイヤーにはそのページの内容を表示します。
+
+```yaml
+rules-urls:
+  en: "https://www.vcmc.jp/en/rules"
+  zh_cn: "https://www.vcmc.jp/zh-cn/rules"
+```
+
+URL は例です。翻訳ページができたら、実際の URL を設定して `/rules reload` を実行してください。
+
+- URL が空のあいだは、日本語のページを表示します。本の最初のページで翻訳が無いことを案内し、同意のページとメッセージはプレイヤーの言語で表示します。
+- 本は HTML をそのまま読み、JavaScript は実行しません。JavaScript で文章を切り替えるページは日本語のまま読まれるので、言語ごとに別の HTML ファイルにしてください。
+- 読み取るのは `content-selector` の中の見出し、段落、リストです。日本語のページと同じ構造にしてください。
 
 ## コード構成
 
@@ -90,6 +130,7 @@ show-message-on-block: true
 - `BookCloseDetector`: 本が閉じられたかどうかの判定。サーバーがなくてもテストできます。
 - `RulesPageParser`: HTML から本に載せる文章を取り出します。
 - `BookLayout`: 文章を本のページに分けます。全角文字が多くても 1 ページに収まるよう、表示幅で判断します。
+- `Messages`, `i18n`: 受け取る人の言語で文面を作ります。
 
 ## ビルド
 

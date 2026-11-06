@@ -1,5 +1,6 @@
 package jp.vcmc.rururules
 
+import jp.vcmc.rururules.i18n.Language
 import org.bukkit.entity.Player
 import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
@@ -79,6 +80,13 @@ class RulesManager(private val plugin: RuruRulesPlugin) {
 
     val rulesUrl: String
         get() = plugin.config.getString("rules-url", "https://www.vcmc.jp/rules") ?: "https://www.vcmc.jp/rules"
+
+    /** その言語のルールページの URL。翻訳ページが無ければ空文字列。 */
+    fun pageUrl(language: Language): String =
+        if (language == Language.JAPANESE) rulesUrl else plugin.config.getString("rules-urls.${language.code}").orEmpty()
+
+    /** チャットに出すリンクの URL。翻訳ページが無ければ日本語のページ。 */
+    fun linkUrl(language: Language): String = pageUrl(language).ifBlank { rulesUrl }
 
     val isShowMessageOnBlock: Boolean
         get() = plugin.config.getBoolean("show-message-on-block", true)

@@ -5,6 +5,9 @@ import org.bukkit.plugin.java.JavaPlugin
 
 class RuruRulesPlugin : JavaPlugin() {
 
+    lateinit var messages: Messages
+        private set
+
     lateinit var rulesManager: RulesManager
         private set
 
@@ -13,6 +16,9 @@ class RuruRulesPlugin : JavaPlugin() {
 
     override fun onEnable() {
         saveDefaultConfig()
+
+        messages = Messages(this)
+        messages.reload()
 
         rulesManager = RulesManager(this)
         rulesManager.loadAgreedPlayers()

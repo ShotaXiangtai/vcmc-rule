@@ -1,14 +1,14 @@
 package jp.vcmc.rururules
 
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask
+import jp.vcmc.rururules.i18n.Language
 import net.kyori.adventure.inventory.Book
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.event.HoverEvent
-import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.entity.Player
 import org.jsoup.Jsoup
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -21,14 +21,13 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
 
         /** 取得に失敗したときは、次の定期更新を待たずにこの間隔でやり直す。 */
         const val RETRY_MINUTES = 5L
-
-        const val NOTICE_OPENED = "本を開きました。最後のページで "
-        const val NOTICE_REOPENED = "同意するまで、本を閉じても再度開きます。最後のページで "
     }
 
-    /** 取得に失敗しても前回の内容を使い続けるので、新しい内容を取得できたときだけ置き換える。 */
+    /** 言語ごとのページの内容。取得に失敗しても前回の内容を使い続けるので、取得できたときだけ置き換える。 */
+    private val contents = ConcurrentHashMap<Language, List<RuleBlock>>()
+
     @Volatile
-    private var cachedPages: List<Component>? = null
+    private var books: Map<Language, List<Component>> = emptyMap()
 
     private val fetching = AtomicBoolean(false)
     private val nextFetch = AtomicReference<ScheduledTask?>()
@@ -37,7 +36,7 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
         if (!fetching.compareAndSet(false, true)) return
         plugin.server.asyncScheduler.runNow(plugin) { _ ->
             val success = try {
-                fetchOnce()
+                fetchAll()
             } catch (e: Exception) {
                 plugin.logger.warning("ルールページ取得失敗: ${e.message}")
                 false
@@ -48,29 +47,46 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
         }
     }
 
-    private fun fetchOnce(): Boolean {
+    /** すべての言語のページを取得して本を作り直す。1 つでも失敗したら false を返す。 */
+    private fun fetchAll(): Boolean {
+        var success = true
+        for (language in Language.entries) {
+            val url = plugin.rulesManager.pageUrl(language)
+            if (url.isBlank()) {
+                contents.remove(language)
+                continue
+            }
+            val blocks = fetch(url)
+            if (blocks != null) contents[language] = blocks else success = false
+        }
+        books = Language.entries.mapNotNull { language -> buildBook(language)?.let { language to it } }.toMap()
+        return success
+    }
+
+    /** ページの内容を返す。取得できなければ null。 */
+    private fun fetch(url: String): List<RuleBlock>? {
         val config = plugin.config
-        val url = plugin.rulesManager.rulesUrl
         val timeout = config.getInt("fetch-timeout-ms", 10000)
         val selector = config.getString("content-selector", "main, article, .content, #content").orEmpty()
         val exclude = config.getString("exclude-selector", RulesPageParser.DEFAULT_EXCLUDE).orEmpty()
 
         plugin.logger.info("ルールページ取得開始: $url")
-        val document = Jsoup.connect(url)
-            .userAgent("Mozilla/5.0 (compatible; RuruRules/${plugin.pluginMeta.version})")
-            .timeout(timeout)
-            .get()
-
-        val blocks = RulesPageParser.parse(document, selector, exclude)
-        if (blocks.isEmpty()) {
-            plugin.logger.warning("ルールページのテキスト抽出が空でした。前回の内容かチャット表示を使います。")
-            return false
+        val blocks = try {
+            val document = Jsoup.connect(url)
+                .userAgent("Mozilla/5.0 (compatible; RuruRules/${plugin.pluginMeta.version})")
+                .timeout(timeout)
+                .get()
+            RulesPageParser.parse(document, selector, exclude)
+        } catch (e: Exception) {
+            plugin.logger.warning("ルールページ取得失敗 ($url): ${e.message}")
+            return null
         }
-
-        val pages = buildBookPages(blocks)
-        cachedPages = pages
-        plugin.logger.info("ルールページ取得完了 (${pages.size} ページ)")
-        return true
+        if (blocks.isEmpty()) {
+            plugin.logger.warning("ルールページのテキスト抽出が空でした ($url)。前回の内容を使います。")
+            return null
+        }
+        plugin.logger.info("ルールページ取得完了 ($url)")
+        return blocks
     }
 
     private fun scheduleNext(success: Boolean) {
@@ -85,59 +101,52 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
         nextFetch.getAndSet(task)?.cancel()
     }
 
-    private fun buildBookPages(blocks: List<RuleBlock>): List<Component> {
+    /**
+     * その言語の本を作る。翻訳ページが無い言語は日本語のページを使い、最初のページで案内する。
+     * 日本語のページも取得できていなければ null。
+     */
+    private fun buildBook(language: Language): List<Component>? {
+        val own = contents[language]
+        val blocks = own ?: contents[Language.JAPANESE] ?: return null
+        val notice = if (own == null) plugin.messages.untranslatedNotice(language) else null
         val texts = BookLayout.paginate(blocks)
-        // 最後のページは同意ボタン用に空けておく。
-        val limit = MAX_BOOK_PAGES - 1
+        // 最初の案内と、最後の同意ボタンのページの分を空けておく。
+        val limit = MAX_BOOK_PAGES - 1 - (if (notice != null) 1 else 0)
         if (texts.size > limit) {
-            plugin.logger.warning("ルールが本の上限を超えるため、${limit + 1} ページ目以降を省略します (${texts.size} ページ)")
+            plugin.logger.warning("ルールが本の上限を超えるため、${limit + 1} ページ目以降を省略します (${language.code}: ${texts.size} ページ)")
         }
-        return texts.take(limit).map { Component.text(it) } + buildAgreePage()
+        return listOfNotNull(notice) + texts.take(limit).map { Component.text(it) } + buildAgreePage(language)
     }
 
-    private fun buildAgreePage(): Component {
-        return Component.empty()
-            .append(Component.text("-------------------\n", NamedTextColor.GRAY))
-            .append(Component.text("上記ルールを確認の上、\n下のボタンを押して同意してください。\n\n", NamedTextColor.DARK_GRAY))
-            .append(
-                Component.text("[ ✔ 同意する ]")
-                    .color(NamedTextColor.DARK_GREEN)
-                    .decorate(TextDecoration.BOLD)
-                    .clickEvent(ClickEvent.runCommand("/rules agree"))
-                    .hoverEvent(HoverEvent.showText(Component.text("クリックして同意", NamedTextColor.GREEN))),
-            )
+    private fun buildAgreePage(language: Language): Component {
+        val messages = plugin.messages
+        return messages.text(language, "agree-page-text").append(
+            messages.text(language, "agree-page-button")
+                .clickEvent(ClickEvent.runCommand("/rules agree"))
+                .hoverEvent(HoverEvent.showText(messages.text(language, "agree-page-hover"))),
+        )
     }
 
     /**
-     * 本を開く。本がまだ用意できていなければチャットに表示する。
+     * 本を開く。hasBook で本があることを確かめてから呼ぶこと。
      *
      * @param reopened 同意せずに閉じられた本を開き直すときは true。
      * @param onOpened 本を開いた直後に、プレイヤーのリージョンで呼ばれる。
      */
     fun openBookForPlayer(player: Player, reopened: Boolean = false, onOpened: () -> Unit = {}) {
-        val pages = cachedPages
-        if (pages.isNullOrEmpty()) {
-            RulesListener.sendRulesMessage(player, plugin.rulesManager.rulesUrl)
-            return
-        }
-
-        val config = plugin.config
-        val title = config.getString("book-title", "vcmc.jp サーバールール") ?: "vcmc.jp サーバールール"
-        val author = config.getString("book-author", "vcmc.jp") ?: "vcmc.jp"
-        val book = Book.book(Component.text(title), Component.text(author), pages)
+        val language = Language.of(player)
+        val pages = books[language] ?: return
+        val messages = plugin.messages
+        val book = Book.book(Component.text(messages.bookTitle(language)), Component.text(messages.bookAuthor(language)), pages)
 
         player.scheduler.run(plugin, { _ ->
             player.openBook(book)
-            player.sendMessage(
-                Component.text(if (reopened) NOTICE_REOPENED else NOTICE_OPENED, NamedTextColor.YELLOW)
-                    .append(Component.text("[同意する]", NamedTextColor.GREEN, TextDecoration.BOLD))
-                    .append(Component.text(" をクリックしてください。", NamedTextColor.YELLOW)),
-            )
+            messages.send(player, if (reopened) "book-reopened" else "book-opened")
             onOpened()
         }, null)
     }
 
-    fun hasCachedBook(): Boolean = !cachedPages.isNullOrEmpty()
+    fun hasBook(language: Language): Boolean = language in books
 
     /** 設定の再読み込み後に呼ぶ。本を使わない設定になったら定期更新を止める。 */
     fun reload() {

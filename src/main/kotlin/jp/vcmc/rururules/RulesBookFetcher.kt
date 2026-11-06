@@ -21,6 +21,9 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
 
         /** 取得に失敗したときは、次の定期更新を待たずにこの間隔でやり直す。 */
         const val RETRY_MINUTES = 5L
+
+        const val NOTICE_OPENED = "本を開きました。最後のページで "
+        const val NOTICE_REOPENED = "同意するまで、本を閉じても再度開きます。最後のページで "
     }
 
     /** 取得に失敗しても前回の内容を使い続けるので、新しい内容を取得できたときだけ置き換える。 */
@@ -54,7 +57,7 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
 
         plugin.logger.info("ルールページ取得開始: $url")
         val document = Jsoup.connect(url)
-            .userAgent("Mozilla/5.0 (compatible; RuruRules/1.1)")
+            .userAgent("Mozilla/5.0 (compatible; RuruRules/${plugin.pluginMeta.version})")
             .timeout(timeout)
             .get()
 
@@ -105,7 +108,13 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
             )
     }
 
-    fun openBookForPlayer(player: Player) {
+    /**
+     * 本を開く。本がまだ用意できていなければチャットに表示する。
+     *
+     * @param reopened 同意せずに閉じられた本を開き直すときは true。
+     * @param onOpened 本を開いた直後に、プレイヤーのリージョンで呼ばれる。
+     */
+    fun openBookForPlayer(player: Player, reopened: Boolean = false, onOpened: () -> Unit = {}) {
         val pages = cachedPages
         if (pages.isNullOrEmpty()) {
             RulesListener.sendRulesMessage(player, plugin.rulesManager.rulesUrl)
@@ -120,10 +129,11 @@ class RulesBookFetcher(private val plugin: RuruRulesPlugin) {
         player.scheduler.run(plugin, { _ ->
             player.openBook(book)
             player.sendMessage(
-                Component.text("本を開きました。最後のページで ", NamedTextColor.YELLOW)
+                Component.text(if (reopened) NOTICE_REOPENED else NOTICE_OPENED, NamedTextColor.YELLOW)
                     .append(Component.text("[同意する]", NamedTextColor.GREEN, TextDecoration.BOLD))
                     .append(Component.text(" をクリックしてください。", NamedTextColor.YELLOW)),
             )
+            onOpened()
         }, null)
     }
 

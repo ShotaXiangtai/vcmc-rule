@@ -24,5 +24,5 @@ content-selector: "main, article, .content, #content"
 # 本に載せない要素のCSSセレクタ
 exclude-selector: "nav, footer, script, style, noscript, form, button, .nav, .header, .footer, .sidebar, .site-header, .eyebrow, body > header"
 
-# 操作をブロックした際にルールメッセージを再表示するか
+# 操作をブロックしたときや、同意せずに本を閉じたときにルールを再表示するか
 show-message-on-block: true

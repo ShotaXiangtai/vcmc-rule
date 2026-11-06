@@ -22,6 +22,7 @@ import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractAtEntityEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerItemHeldEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
@@ -36,6 +37,7 @@ class RulesListener(
 ) : Listener {
 
     private val lastReminder = ConcurrentHashMap<UUID, Long>()
+    private val bookWatcher = BookWatcher(plugin, rulesManager, ::reopenBook)
 
     // プレイヤー参加
     @EventHandler(priority = EventPriority.MONITOR)
@@ -55,6 +57,7 @@ class RulesListener(
     fun onPlayerQuit(event: PlayerQuitEvent) {
         rulesManager.removePending(event.player)
         lastReminder.remove(event.player.uniqueId)
+        bookWatcher.onQuit(event.player)
     }
 
     // 移動制限 (視点変更は許可)
@@ -76,13 +79,19 @@ class RulesListener(
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPlayerInteractEntity(event: PlayerInteractEntityEvent) {
-        if (rulesManager.isPending(event.player)) event.isCancelled = true
+        val player = event.player
+        if (!rulesManager.isPending(player)) return
+        event.isCancelled = true
+        remind(player)
     }
 
     /** 防具立てなどの操作はこちらのイベントになり、上のリスナーには届かない。 */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPlayerInteractAtEntity(event: PlayerInteractAtEntityEvent) {
-        if (rulesManager.isPending(event.player)) event.isCancelled = true
+        val player = event.player
+        if (!rulesManager.isPending(player)) return
+        event.isCancelled = true
+        remind(player)
     }
 
     // ダメージ・攻撃制限（未同意プレイヤーの被ダメージおよび攻撃を防止）
@@ -97,6 +106,7 @@ class RulesListener(
             val damager = event.damager
             if (damager is Player && rulesManager.isPending(damager)) {
                 event.isCancelled = true
+                remind(damager)
             }
         }
     }
@@ -152,16 +162,24 @@ class RulesListener(
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPlayerDropItem(event: PlayerDropItemEvent) {
-        if (rulesManager.isPending(event.player)) {
-            event.isCancelled = true
-        }
+        val player = event.player
+        if (!rulesManager.isPending(player)) return
+        event.isCancelled = true
+        remind(player)
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPlayerSwapHandItems(event: PlayerSwapHandItemsEvent) {
-        if (rulesManager.isPending(event.player)) {
-            event.isCancelled = true
-        }
+        val player = event.player
+        if (!rulesManager.isPending(player)) return
+        event.isCancelled = true
+        remind(player)
+    }
+
+    /** ホットバーの切り替えは止めないが、本を開いたままではできないので、本を閉じた合図になる。 */
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onPlayerItemHeld(event: PlayerItemHeldEvent) {
+        if (rulesManager.isPending(event.player)) remind(event.player)
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -169,6 +187,7 @@ class RulesListener(
         val who = event.whoClicked
         if (who is Player && rulesManager.isPending(who)) {
             event.isCancelled = true
+            remind(who)
         }
     }
 
@@ -177,16 +196,15 @@ class RulesListener(
         val who = event.whoClicked
         if (who is Player && rulesManager.isPending(who)) {
             event.isCancelled = true
+            remind(who)
         }
     }
 
     /** 操作を止めたときの再表示。感圧板の上などでは毎 tick 発生するので、間隔を空ける。プレイヤーのリージョンで呼ぶこと。 */
     private fun remind(player: Player) {
         if (!rulesManager.isShowMessageOnBlock) return
-        val now = System.currentTimeMillis()
         val previous = lastReminder[player.uniqueId]
-        if (previous != null && now - previous < REMIND_INTERVAL_MILLIS) return
-        lastReminder[player.uniqueId] = now
+        if (previous != null && System.currentTimeMillis() - previous < REMIND_INTERVAL_MILLIS) return
         showRules(player)
     }
 
@@ -194,13 +212,22 @@ class RulesListener(
      * ルールを表示
      */
     fun showRules(player: Player) {
-        val bookMode = plugin.config.getBoolean("show-as-book", true)
-        if (bookMode && bookFetcher.hasCachedBook()) {
-            bookFetcher.openBookForPlayer(player)
+        lastReminder[player.uniqueId] = System.currentTimeMillis()
+        if (isBookMode()) {
+            bookFetcher.openBookForPlayer(player) { bookWatcher.onBookOpened(player) }
         } else {
             sendRulesMessage(player, rulesManager.rulesUrl)
         }
     }
+
+    /** 同意せずに閉じられた本を開き直す。本を使っていないときは、チャットが埋まらないよう何もしない。 */
+    private fun reopenBook(player: Player) {
+        if (!rulesManager.isShowMessageOnBlock || !isBookMode()) return
+        lastReminder[player.uniqueId] = System.currentTimeMillis()
+        bookFetcher.openBookForPlayer(player, reopened = true) { bookWatcher.onBookOpened(player) }
+    }
+
+    private fun isBookMode(): Boolean = plugin.config.getBoolean("show-as-book", true) && bookFetcher.hasCachedBook()
 
     companion object {
         private const val REMIND_INTERVAL_MILLIS = 3000L

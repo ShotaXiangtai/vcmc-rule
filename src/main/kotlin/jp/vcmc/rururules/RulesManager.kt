@@ -81,12 +81,23 @@ class RulesManager(private val plugin: RuruRulesPlugin) {
     val rulesUrl: String
         get() = plugin.config.getString("rules-url", "https://www.vcmc.jp/rules") ?: "https://www.vcmc.jp/rules"
 
-    /** その言語のルールページの URL。翻訳ページが無ければ空文字列。 */
-    fun pageUrl(language: Language): String =
-        if (language == Language.JAPANESE) rulesUrl else plugin.config.getString("rules-urls.${language.code}").orEmpty()
+    /** サイトの対訳表（i18n.js）の URL。空なら翻訳しない。 */
+    val translationsUrl: String
+        get() = plugin.config.getString("translations-url").orEmpty().trim()
 
-    /** チャットに出すリンクの URL。翻訳ページが無ければ日本語のページ。 */
-    fun linkUrl(language: Language): String = pageUrl(language).ifBlank { rulesUrl }
+    /** 対訳表の代わりに使う、その言語のルールページの URL。設定が無ければ空文字列。日本語は rules-url。 */
+    fun pageUrl(language: Language): String =
+        if (language == Language.JAPANESE) rulesUrl else plugin.config.getString("rules-urls.${language.code}").orEmpty().trim()
+
+    /**
+     * チャットに出すリンクの URL。その言語のページがあればそれを使う。
+     * 無ければ日本語のページに ?lang= を付けて、サイトの翻訳でプレイヤーの言語を表示させる。
+     */
+    fun linkUrl(language: Language): String {
+        val own = pageUrl(language)
+        if (language != Language.JAPANESE && own.isNotBlank()) return own
+        return if (translationsUrl.isBlank()) rulesUrl else SiteTranslations.linkFor(rulesUrl, language)
+    }
 
     val isShowMessageOnBlock: Boolean
         get() = plugin.config.getBoolean("show-message-on-block", true)
